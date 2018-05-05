@@ -20,4 +20,15 @@ interface CmsuUtilityInterface {
    */
   public function getScheduledUpdateReferenceFields(string $entityTypeId, string $bundle): array;
 
+  /**
+   * Get the field which contains new state values for a scheduled update type.
+   *
+   * @param string $scheduledUpdateTypeId
+   *   ID of a scheduled update type entity.
+   *
+   * @return string|null
+   *   The name of the field, or null.
+   */
+  function getModerationStateFieldName(string $scheduledUpdateTypeId): ?string;
+
 }

@@ -6,7 +6,6 @@ use Drupal\content_moderation_scheduled_updates\CmsuUtilityInterface;
 use Drupal\Core\Datetime\DrupalDateTime;
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
 use Drupal\Core\Entity\ContentEntityInterface;
-use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\content_moderation\ModerationInformationInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\Validator\Constraint;
@@ -16,13 +15,6 @@ use Symfony\Component\Validator\ConstraintValidator;
  * Checks if a moderation state transition is valid.
  */
 class CmsuScheduledStateTransitionValidator extends ConstraintValidator implements ContainerInjectionInterface {
-
-  /**
-   * The entity type manager.
-   *
-   * @var \Drupal\Core\Entity\EntityTypeManagerInterface
-   */
-  protected $entityTypeManager;
 
   /**
    * The moderation info.
@@ -39,28 +31,14 @@ class CmsuScheduledStateTransitionValidator extends ConstraintValidator implemen
   protected $cmsuUtility;
 
   /**
-   * Contains a map of scheduled update types which change moderation_state.
-   *
-   * Keys contain scheduled update type ID, values are the name of the field
-   * on the scheduled update entity containing new state values. If value is 
-   * null then the type does not map to content moderation field.
-   *
-   * @var array
-   */
-  protected $moderationStateFieldMap = [];
-
-  /**
    * Creates a new CmsuScheduledStateTransitionValidator instance.
    *
-   * @param \Drupal\Core\Entity\EntityTypeManagerInterface $entityTypeManager
-   *   The entity type manager.
    * @param \Drupal\content_moderation\ModerationInformationInterface $moderationInformation
    *   The moderation information.
    * @param  \Drupal\content_moderation_scheduled_updates\CmsuUtilityInterface
    *   CMSU utilities.
    */
-  public function __construct(EntityTypeManagerInterface $entityTypeManager, ModerationInformationInterface $moderationInformation, CmsuUtilityInterface $cmsuUtility) {
-    $this->entityTypeManager = $entityTypeManager;
+  public function __construct(ModerationInformationInterface $moderationInformation, CmsuUtilityInterface $cmsuUtility) {
     $this->moderationInformation = $moderationInformation;
     $this->cmsuUtility = $cmsuUtility;
   }
@@ -70,7 +48,6 @@ class CmsuScheduledStateTransitionValidator extends ConstraintValidator implemen
    */
   public static function create(ContainerInterface $container) {
     return new static(
-      $container->get('entity_type.manager'),
       $container->get('content_moderation.moderation_information'),
       $container->get('cmsu.utility')
     );
@@ -150,51 +127,27 @@ class CmsuScheduledStateTransitionValidator extends ConstraintValidator implemen
         $scheduledUpdateEntity = $item->entity;
 
         // Does this scheduled update change moderation state?
-        $sourceToStateField = $this->getModerationStateFieldName($scheduledUpdateEntity->bundle());
-        if (!$sourceToStateField) {
+        $sourceToStateFieldName = $this->cmsuUtility
+          ->getModerationStateFieldName($scheduledUpdateEntity->bundle());
+        if (!$sourceToStateFieldName) {
           continue;
         }
 
         // Does the scheduled update contain a value?
-        $targetState = $scheduledUpdateEntity->{$sourceToStateField}->value ?? '';
-        if (empty($targetState)) {
+        /** @var \Drupal\Core\Field\FieldItemList $sourceToStateField */
+        $sourceToStateField = $scheduledUpdateEntity->{$sourceToStateFieldName};
+        if ($sourceToStateField->isEmpty()) {
           continue;
         }
 
         $timeline[] = [
           'time' => $scheduledUpdateEntity->update_timestamp->value ?? NULL,
-          'state' => $targetState,
+          'state' => $sourceToStateField->value,
         ];
       }
     }
 
     return $timeline;
-  }
-
-  /**
-   * Get the field which contains new state values for a scheduled update type.
-   *
-   * @param string $scheduledUpdateTypeId
-   *   ID of a scheduled update type entity.
-   *
-   * @return string|null
-   *   The name of the field, or null.
-   */
-  function getModerationStateFieldName(string $scheduledUpdateTypeId): ?string {
-    if (array_key_exists($scheduledUpdateTypeId, $this->moderationStateFieldMap)) {
-      return $this->moderationStateFieldMap[$scheduledUpdateTypeId];
-    }
-
-    /** @var \Drupal\scheduled_updates\ScheduledUpdateTypeInterface|null $scheduledUpdateType */
-    $scheduledUpdateType = $this->entityTypeManager
-      ->getStorage('scheduled_update_type')
-      ->load($scheduledUpdateTypeId);
-
-    $fieldName = array_search('moderation_state', $scheduledUpdateType->getFieldMap());
-    $fieldName = $fieldName ? $fieldName : NULL;
-    $this->moderationStateFieldMap[$scheduledUpdateTypeId] = $fieldName;
-
-    return $this->moderationStateFieldMap[$scheduledUpdateTypeId];
   }
 
 }
