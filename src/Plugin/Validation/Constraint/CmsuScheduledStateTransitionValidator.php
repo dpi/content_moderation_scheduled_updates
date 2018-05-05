@@ -70,7 +70,9 @@ class CmsuScheduledStateTransitionValidator extends ConstraintValidator implemen
       $stateTimeline[] = ['time' => 0, 'state' => $newStateAfterSave];
     }
 
-    array_push($stateTimeline, ...$this->getScheduledStateTransitions($entity));
+    if ($transitions = $this->getScheduledStateTransitions($entity)) {
+      array_push($stateTimeline, ...$transitions);
+    }
 
     usort($stateTimeline, function($a, $b) {
       return $a['time'] > $b['time'];
